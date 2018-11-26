@@ -1,0 +1,5 @@
+# Silent XCODE install/upgrade script.
+
+# Ensure's system meets minimum requirements and XCODE isn't running.  Then moves existing XCODE install to XCODE_OLD and copies/extracts/install newer XCODE version. 
+
+# Requires execution as sudo

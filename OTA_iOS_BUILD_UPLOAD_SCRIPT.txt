@@ -1,0 +1,18 @@
+This is a shell script that publishes an iOS application (IPA) on to an OTA (Over the air) server for easy internal build delivery.
+
+The script is packaged as a MacOS ‘Automator’ app so the user just has to drag the IPA over to the app to use the script.  The filename will be passed as the first parameter to the script.
+
+See screenshot for visual demo.
+
+Upon success information related to the build will be displayed to the user.
+
+The script does the following:
+ 
+# Script is handed an IPA as the first argument and will then:
+# - Perform some simple checks to ensure IPA is valid
+# - Mount the OTA servers share
+# - Make a new folder for the IPA (It finds the last build number, adds one to it and uses this number for the folder)
+# - Copy the IPA over
+# - Generate the requisite files for the web server (index.php) and those required by iOS (plist)
+ 
+This is the source for the shell script and is not packaged as an automator app.

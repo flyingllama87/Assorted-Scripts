@@ -1,0 +1,3 @@
+<#
+This script queries the Cisco Meraki MDM REST API for all devices and the datetime of their last check-in (lastconnected date).  If the device has not checked in in the period listed, set a bad status.  Designed to be sent and read from a monitoring system.
+#>

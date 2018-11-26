@@ -1,0 +1,86 @@
+***** OVERVIEW *****
+
+This script is a file duplication analysis tool with some case specific logic tacked on.  In our case it was to compare two directory trees and work out what files were in the first directory tree (Art assets) but not in the second directory tree (an SVN working copy) and generate a CSV report listing them.  Once we knew which art assets were not in the version control system, we could then batch upload them.  The extra logic added to this script is that:
+  - It can take more than one directory tree as a source
+  - It will compare based on hash and not file name in case files have been renamed to suit a destination name convention.
+  - If a file ends a JPG, PNG, TIFF or other format where a PSD exists with the same file name and in the same directory, omit it as this image was likely exported from the PSD.
+  - Generate a comment from file system information to be used as part of the SVN commit e.g.: 
+“- Add art asset "Mr_Potato.jpg" created by user john.smith and last modified 2016-12-25 9:22”
+
+The script filtered 150GB of files from a total of 550GB of files.  This resulted in a report listing 400GB of files that could then be uploaded to SVN with an already generated check-in comment & paths to the files.
+
+This script is not a great example of code cleanliness and more settings could be set via the cmdline instead of script variables.  However, the script is generalised, modular and has proper usage instructions
+
+
+***** SCRIPT DETAILS ******
+
+** OUTPUT: **
+
+The script results in a file with the following columns:
+
+MD5SUM = MD5 sum of the file
+FILESIZE = Size of file in bytes
+FILENAME = Name of the file (not full path)
+FULLPATH = Full path to the file on A: drive 
+DESTINATION = Intended to be modified by Excel.  A duplicate of the FULLPATH column with the base path replaced with the intended copy location in the SVN working copy.
+SVNCOMMENT = Field contains an SVN commit message appropriate for the file being committed.  The script pulls the username and date last modified of the source file and uses that.  Example commend:
+“- Add art asset "Mr_Potato.jpg" created by user john.smith and last modified 2016-12-25 9:22”
+SVNCOMMITED = Field is for the script that actually does the committing to fill in as it commits files.
+
+
+** REQUIREMENTS: **
+
+Asteroid colorama isort lazy-object-proxy mccabe pylint pywin32 six virtualenv wrapt
+
+The script is intended to be executed over multiple stages.  Each stage takes the input from the last step.  The data is supposed to be checked by a human after each step for a sanity check.
+
+** VARIABLES / SETTINGS: **
+In the script, the following variables are listed and they point to the locations of input files.
+
+# Text file with a list of folders you want to search with against the destination (SVN working copy) location.
+file_with_all_art_folders = "C:\\ART_FILES_SCRIPT\\LIST_OF_ART_FOLDERS.TXT"
+# Name of the file that will be output by the first stage / initial Art file scan.
+filename_list_of_all_art_files = "ART_SHARE_FILES.CSV"
+# Path to destination / SVN working copy
+path_with_svn_art_files = "D:\\Develop\\art"
+# Name of the file that will be output by the second stage / SVN art file scan.
+filename_list_of_svn_art_files = "SVN_ART_FILES.CSV"
+
+** USAGE: **
+
+The script should be structured fairly well.  It's split into 5 functions that can be called from the command line.  These functions have help text (see below). You just run each stage one after another.
+
+----------------------------------------------------------------------
+(venv) d:\Scripts\COMPARE_ART_FOLDER_TREES>COMPARE_ART_FOLDER_TREES.py
+
+usage: COMPARE_ART_FOLDER_TREES.py [-h] [--ScanArtFiles] [--ScanSVNArtFiles]
+                        [--CompareMD5Sums ART_SHARE_FILES_CSV SVN_FILES_CSV]
+                        [--RemovePSDExports CSV_LIST_OF_FILES]
+                        [--FillSVNInfo CSV_LIST_OF_FILES]
+
+optional arguments:
+  -h, --help            show this help message and exit
+
+  --ScanArtFiles        Recursively scan all folders listed in
+                        file_with_all_art_folders var, generating a CSV
+                        file (filename_list_of_all_art_files var) with a
+                        list of files, sizes of folders and an MD5 checksum of
+                        them all
+
+  --ScanSVNArtFiles     Recursively scan folder structure specified by
+                        path_with_svn_art_files var, generating a CSV file
+                        (filename_list_of_all_svn_art_files var) with a list
+                        of all files, sizes of folders and an MD5 checksum of
+                        them all
+
+  --CompareMD5Sums ART_SHARE_FILES_CSV SVN_FILES_CSV
+                        Compare MD5 Checksums of art share files to checksums
+                        of SVN files to find what's missing from SVN
+
+  --RemovePSDExports CSV_LIST_OF_FILES
+                        Remove PNGs, JPGs, PDFs, TIFs, and TGAs where a PSD
+                        also exists in the same folder with the same name
+
+  --FillSVNInfo CSV_LIST_OF_FILES
+                        Fill in the data for SVN Comment which is path of
+                        file, file owner, modified date

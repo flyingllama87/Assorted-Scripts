@@ -1,0 +1,17 @@
+###############################################################################################################################
+# Purpose:  Export all disconnected mailboxes to PST files.  Run in Exchange Management Shell.                                #
+# 
+# The script gets a list of all disconnected mailboxes for a specified server and stores their display names in a variable.   #
+# It then connects the disconnected mailboxes (one a time) to an enabled AD user, queues the export request and waits for the # 
+# export to complete before disconnecting the mailbox and continuing to the next user.  The display name is used for the      #
+# filename & the name of the export request.                                                                                  #
+#                                                                                                                             #
+# I'd recommend using Clean-MailboxDatabase before running the script to ensure all disconnected mailboxes are listed.        #
+# You can also purge disconnected mailboxes after exporting with Remove-StoreMailbox.                                         #
+###############################################################################################################################
+
+$Mail_server = "MAILSRV1.COMPANY.INTERNAL"
+$Database_name = "MBXDB1" 
+$UNC_PSTPath = "\\filesrv\IT\Backups\ArchivePSTs" #Exclude slash
+$Mailbox_Archive_username = "mailboxarchive"
+$Mailbox_Archive_DisplayName = "Mailbox Archiver"

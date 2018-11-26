@@ -1,0 +1,6 @@
+A recurring request from clients for a SaaS web application I was supporting (VeMail/Vision6) was the ability to ‘scrub’ their database of inactive contacts.  The client’s ‘contact databases’ contained lists of contacts that received marketing e-mails.   Clients wanted to remove contacts who weren’t opening the marketing e-mails to reduce costs.  The existing process was very manual and only allowed clients to view if contacts opened one of the last 3 e-mails.
+
+I decided to create a script/program that would automate the process and also allow clients to see if their contacts opened any previous e-mails as opposed to just the last 3.
+This program was made in C#, leveraging an XML-RPC.NET library to connect to the client’s database via the VeMail API.
+
+Requires the CookComputing XmlRpc binary/dll in the same directory.

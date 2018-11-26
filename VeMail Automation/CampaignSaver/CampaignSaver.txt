@@ -1,0 +1,9 @@
+Project: Bulk reports & e-mail message downloader
+Tech used: HTML/CSS, VBS, XML-RPC, VeMail API
+
+Whilst supporting the Vision6 / Vemail SaaS marketing platform, a client asked if we can provide a downloadable copy of her account data.  Specifically, a copy of every message sent through the system (e-mail marketing) & amalgamated reports generated from the aforementioned e-mails. The development team was able to pull some of this from the backend but it did not include amalgamated reports, downloaded images or rewrite the html so the images would work locally and a few other things the client wanted.
+
+As I was doing a lot of HTML/CSS on the job and I’d recently been writing excel macros, I decided to create a ‘HTML application’ (.hta).  HTML applications are a little known about feature in Windows that allows you to write VB (or JavaScript) applications whilst using HTML/CSS for presentation. They are executed under the more lenient security context of a local application as opposed to scripts running in the browser.  This provides the ability to write to file systems and also open COM objects and more.
+
+This script leverages an XML-RPC COM library to communicate with the API of the VeMail online marketing platform.  It then downloads the emails, images, changes the code so the images work locally, downloads the individual reports, compiles an overview report and saves it to Excel spread sheets.
+This application has a nice, clean interface and is simple to use.  You simply provide it your VeMail username, password and a destination folder.  Once you hit GO, The application will provide reports as to what the application is doing.

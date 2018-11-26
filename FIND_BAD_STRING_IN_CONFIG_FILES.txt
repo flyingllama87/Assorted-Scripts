@@ -1,0 +1,6 @@
+<# This script was used to find a bad setting/value in an internal application widely used in an office.  The value was causing issues for a remote host due to bad requests therefore the bogus values had to be found & cleaned up ASAP.
+
+The script scans for a specific folder name on the local machine.  If that folder name is found, a particular file is checked for the bad value via RegEx match.  If a match is found for the bad value, information is printed and logged to a file.  
+
+The script was executed and results gathered with the 'perform action on all PCs' script.
+#>

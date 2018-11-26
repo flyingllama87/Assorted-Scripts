@@ -1,0 +1,57 @@
+# This script was designed to make WIFI management easier in an environment that uses 802.1X certificate authentication and a custom web interface (Wifi Web Tool / WWT) to generate the certificates.
+# 
+# Although the script is environment specific due to the reliance of the custom WWT.  It's an example of some of the scripts I've written.  In this instance, it's for a tool that does not have an API available for use so the selenium is used to automate the webtool.  The advantage of this is that any web page can be automated.  The downside is that changes to the web interface may break automation scripts.
+#
+# Ideally, a REST API could be used for the webtool automation and an MDM library could be used to automatically install certificates to attached mobile devices.
+#
+# The script will generate a new WIFI certificate for every device listed in the CSV passed to it using the ‘--AddDevices’ switch.
+# When executed, the script should start your browser via selenium and automate the webtool.  All actions are logged to both file and to user.
+# You can optionally pass the --GenerateHTML option to generate a HTML/php page that can then be hosted on a webserver.  The purpose of this is to make it easy to install the certificates on a device.
+# See usage or source for more.
+#
+# I tried to make this script readable with a good set of usage instructions and help text.
+#
+# Requires Python 3 & the following libraries: selenium, argparse, HTMLParser, urllib, pprint
+# Requires a selenium browser driver.
+
+
+***** USAGE *****
+
+Logging to file: RunLog-2018-11-14_22-43.txt
+---
+usage: WIFI_WEBTOOL_AUTOMATION.py [-h] [--AddDevices DEVICE_CSV]
+                                  [--CombineCSVs NEW_DEVICE_CSV OLD_DEVICE_CSV]
+                                  [--GenerateHTML DEVICE_CSV]
+
+Welcome to Morgan's WIFI webtool automation script.  Chances are you know what it does as you wrote it & you're probably the only user.
+
+Instructions:
+
+### First Run:
+- Export device list from ASSET MANAGEMENT TOOL.
+- Modify export from above step or create CSV with wifi devices you want to add to Wifi Webtool with the Model, AssetName and MACAddress in it with no heading.
+- Run script with --AddDevices and let it do it's thing / export a CSV of added devices and download all new certs.
+- Run script with --GenerateHTML argument and pass an input CSV file (exported by either of the above) and produce HTML/PHP output page.
+- Copy all certs + HTML table to remote web server.  Make note of CSV name (or back it up) if you expect to use the CSV output again to generate new certs.
+- Add certs on all devices.
+- If a cert was successfully installed, remove device from the list of devices to add to the Wifi Webtool.
+
+### Adding more devices:
+- Modify above CSV or create new with wifi devices you want to add to the Wifi Webtool with the Model, AssetName and MACAddress in it with no heading.
+- Run script with --AddDevices argument and let it do it's thing.  Any existing the Wifi Webtool entries that match devices being added will be removed (FROM WWT). Make note of output CSV name.
+- Run script with --CombineCSVs argument and pass the file name exported by the above command as well as the csv output the second last time you ran the program.
+It will output a new CSV that includes entries from both CSVs except it will omit any from the old CSV if they are also in the new CSV (based on MAC address).
+- Optionally sort the outout CSV from --GenerateHTML in excel to desired arrangement and feed it back into the script.
+- Run script with --GenerateHTML argument and pass an input CSV file (exported by either of the above) and produce HTML/PHP output.
+- Copy all certs + HTML file to remote web server.  Make note of CSV name (or back it up) if you expect to use the CSV output again to generate new certs.
+- Add certs on all devices.
+- If a cert was successfully installed, remove device from the list of input CSV.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --AddDevices DEVICE_CSV
+                        Provide CSV with list of devices you want to add to the Wifi Webtool.  Existing entries will be overwritten.
+  --CombineCSVs NEW_DEVICE_CSV OLD_DEVICE_CSV
+                        Provide twos CSVs (new and old) output by AddDevices and they'll be combined. Any devices on both will be ignored from old list
+  --GenerateHTML DEVICE_CSV
+                        Generate HTML from previous CSV output from the above functions.

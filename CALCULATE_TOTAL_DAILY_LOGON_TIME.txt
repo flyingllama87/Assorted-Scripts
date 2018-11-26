@@ -1,0 +1,18 @@
+<#
+This script retrieves the total login time from PCs for the user assigned to that PC for the day before the script is executed.  Results are exported to a CSV.
+
+The script first generates a list of computers to contact by concatenting a computername prefix with a sequentially incrementing number (E.G. WKS002, WKS003, etc.).  It'll then work out which computers are contactable and then attempts to retrieve the data from the PC.
+
+The script calculates the total login time by checking the first logon or unlock event of the day and the last lock, logoff or RDP disconnect event event of the day and finally calculating the difference between the two.
+
+Notes: 
+- Only PCs that are on are processed.
+- Local admin access is required on the PCs.  Credentials are asked for on script execution.
+- Computer to user mapping is stored in a csv ($COMPUTER_TO_USER_MAP_FILE).  There should be a 'COMPUTER_NAME' & 'USERNAME' column (with headings).
+- This script may have privacy and ethtical implications that should be considered before script execution.  Make sure you have relevant approval.
+- I have seen Excel automatically hide the hours in the 'TOTAL TIME LOGGED IN' column when opening the generated CSV.  Make sure to adjust the format of this column if data doesn't look right.
+- The data is simply the first & last logon times.  Not the total active time.
+
+A key improvement would be to either use the first column of the PC to user mapping CSV for the list of computer names or to not require a PC to user mapping.
+
+#>

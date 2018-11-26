@@ -1,0 +1,20 @@
+<#
+This script was written for a QA team that needed to easily display and log information from iOS devices when testing an application.  This script allows the quality analyst to select the device they want to capture the log of (via network or USB cable) and initiate the capture.  
+
+Only the syslog content related to the app is displayed but all syslog information is captured to a file with the device name & current date/time included.  This is because the entire syslog may benefit the development team when a bug is logged.
+
+This script relied on the libimobiledevice executables being in the same folder:
+- idevice_id.exe
+- idevicename.exe
+- idevicesyslog.exe
+
+The advantage of this over executing idevicesyslog directly is that:
+- It allows the user to easily select the device they want to capture the syslog of without passing the UDID as a commandline parameter
+- Syslog is both displayed and logged to a file
+- The list of devices that we can connect to is displayed as device name instead of UDID.
+
+Can be easily launched from included BAT file which is useful for some users.
+
+Binaries for libimobiledevice can be found here:
+https://github.com/Sn0wCooder/libimobiledevice-compiled-windows
+#>

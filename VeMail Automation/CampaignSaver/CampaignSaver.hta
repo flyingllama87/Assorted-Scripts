@@ -1,0 +1,833 @@
+                                             
+<!--
+Morgan Robertson - Download Messages and the contacts that received that e-mail from a VeMail account via the API
+POCKET XML-RPC is an additional library used to connect to the API Server.
+
+	CURRENT FEATURES:
+ 
+	Display and Download message code for one message
+	View the e-mail address of the recipients of the message, across all databases!
+	Commented code
+	Download complete list of recipients in file
+		Different file for different send of the same message (different campaign id)
+	Download all messages
+	HTA and GUI Interface upgrade 1
+	Move to HTA
+		Create 'start' button
+		Create 'Exit' Button
+		Allow user to select the file names of the exported files (msg id, msgname, subject)
+	HTA Interface Upgrades 2
+	Move code to functions/subs
+	Ability to select Output Directory
+	Message download improvements
+	Download Images
+	Changes image URL HTML to relative path
+	Excel support
+	Download detailed reporting information for each campaigns
+		Get Detailed Informatin on each contact (GetCampaigncontacts)
+		Get Detailed clickthrough information for each contact in campaign
+	Reporting overview for all campaigns (pLus clickthroughs)
+		Gather overall campaign statistics
+		Gather Campaign Link Statistics
+	Connect using https
+                   
+	FUTURE FEATURES MAY INCLUDE:
+                               
+	Ability to have more control over the name used to split different sends of the same email (currently campaign id)
+	Compile to .EXE
+	Implement 'fast' (NO GUI) mode.
+                  
+-->
+
+<HTML>
+<HEAD>
+
+<SCRIPT type="text/vbscript"> 
+
+	'Variants used when the contacts are received from the API
+	Dim CampaignContacts, CampaignDBObj, Contact
+	
+	'Perpare file saving variables
+	Dim filesys, filetxt, getname, path
+	
+	'Prepare variable to store excel files full path
+	Dim ExcelFilePath
+	
+	'Prepare variables for selected folder
+	Dim SelectedFolder
+	SelectedFolder = "C:\Documents and Settings\All Users\Documents" 'Select default Folder in the event the user does not select one.
+	
+	Dim SelectedMessageFormat
+	SelectedMessageFormat = "Message ID"
+	
+	'Variables for Returned Email & it's content
+	Dim ReturnedEmail, ReturnedEmailContent
+	
+	'Set variable to ensure I get the HTML_content back for the message
+	Dim RetrieveContent
+	RetrieveContent = True 'Set variable to receive content
+	
+	'Setup current Campaign, Email ID and Campaign ID for use in loop
+	Dim Campaign, CampaignID, EmailID
+	
+	'Store the Message Subject and Message Name. Include variables for 'file name' version (invalid characters removed)
+	Dim MessageSubject, MessageName, FileMessageSubject, FileMessageName
+	
+	'Declare Campaign Object
+	Dim ReturnedCampaigns
+	
+	'Contact Links Array
+	Dim ContactLinks
+	
+	'Prepare the API object
+	Dim api
+	
+	window.resizeTo 900,700 'Set Window to a size suited for 1024x768 and over
+	
+	Sub WaitCursor 'Modify Cursor to busy
+		document.body.style.cursor = "wait"
+	End Sub
+	
+	Sub LinkPointer 'Modify Cursor to hand for lniks
+		document.body.style.cursor = "hand"
+	End Sub
+	
+	Sub DefaultCursor 'Modify Cursor to default pointer
+		document.body.style.cursor = "default"
+	End Sub
+	
+	Sub ExitSub 'exit
+		window.close
+	End Sub
+	
+	Sub RunProgramInfo 'Run the program info HTA
+		Set objShell = CreateObject("Wscript.Shell")
+		objShell.Run "Resources\ProgramInfo.HTA"
+	End Sub
+	
+	Function RadioItem(Item) 'Set the message format (for file save file name) to the radio item value is now
+    	SelectedMessageFormat = item 'Set the message format to the radio item value is now
+	End Function
+	
+	Sub ChangeFolders 'Run when the 'change folders' button is clicked on the ui
+		SelectedFolder = BrowseFolder("Desktop", "True") 'Show Folder popup
+		Document.UserSelections.OutputFolder.value = SelectedFolder
+	End Sub 
+	
+	Sub UpdateScreen() 'refresh the screen by making the computer do something else... like running the command prompt :S
+		'This is used to allow screen updates
+		Dim CMD, WSHShell
+		Set WSHShell = CreateObject("WScript.Shell")
+		CMD = WSHShell.ExpandEnvironmentStrings("%comspec%")
+		WSHShell.run CMD + " /c ", 0, true
+		Set WSHShell = Nothing
+	End Sub
+	
+	Sub InitiateProcess 'The Go button has been clicked...
+		Document.getElementById("INTERFACE").innerHTML = "Process started<br>"
+		
+		Document.getElementById("BODY").innerHTML= "<table border='0' cellspacing='0' cellpadding='0' width='100%' align='top' height='100%'><tbody><tr><td colspan='2'><div style='overflow: auto; height: 95%;' id='INTRO'>&nbsp;</div></td></tr><tr height='20'><td style='TEXT-ALIGN:left;BORDER-TOP:black 2px solid' id='ProgramInformationLink' class='UI' onmouseover='LinkPointer' onmouseout='DefaultCursor' onclick='RunProgramInfo' width='141'><a class='UI' href='#'>Program Information</a></td><td style='BORDER-TOP:black 2px solid' class='UI' width='82%' align='right'><a style='TEXT-ALIGN:right;TEXT-DECORATION:none' class='UI' onmouseover='LinkPointer' onmouseout='DefaultCursor' href='mailto:morganrobertson@gmail.com'>Contact Morgan Robertson</a></td></tr></tbody></table>"
+		'Above is the to redraw the UI tables to one large one for the output of the main subroutines...
+		WaitCursor
+		CampaignSaver 'Run the main subroutine
+		Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br><br><input type='button' style='margin-left: 50px;' onclick='ExitSub' value='Exit'>"
+		'Draw an exit button....
+		DefaultCursor
+	End Sub
+	
+	Sub LinkToRadio(LinkID) 'If a user clicks a link on the UI set the associated radio button
+		Dim ArySelection
+	  
+		If LinkID = "Link_Message_ID" Then
+			ArySelection = 0
+			SelectedMessageFormat = "Message ID"
+		ElseIf LinkID = "Link_Message_Name" Then
+			ArySelection = 1
+			SelectedMessageFormat = "Message Name"
+		ElseIf LinkID = "Link_Message_Subject" Then
+			ArySelection = 2
+			SelectedMessageFormat = "Message Subject"
+		Else
+			ArySelection = 0
+		End If
+		Document.UserSelections.FileName(ArySelection).checked = True
+	End Sub
+	
+	Sub DownloadFile(strFileURL, strHDLocation) 'download a file given a url and path to download to
+	
+		' Fetch the file
+    	Set objXMLHTTP = CreateObject("MSXML2.XMLHTTP")
+
+	    objXMLHTTP.open "GET", strFileURL, false
+	    objXMLHTTP.send()
+	
+		If objXMLHTTP.Status = 200 Then
+			Set objADOStream = CreateObject("ADODB.Stream")
+			objADOStream.Open
+			objADOStream.Type = 1 'adTypeBinary
+			
+			objADOStream.Write objXMLHTTP.ResponseBody
+			objADOStream.Position = 0    'Set the stream position to the start
+			
+			Set objFSO = Createobject("Scripting.FileSystemObject")
+				If objFSO.Fileexists(strHDLocation) Then objFSO.DeleteFile strHDLocation
+			Set objFSO = Nothing
+			
+			objADOStream.SaveToFile strHDLocation
+			objADOStream.Close
+			Set objADOStream = Nothing
+		End if
+		Set objXMLHTTP = Nothing
+	End Sub
+	
+	Sub DownloadImages(StrEmailHTML) 'Download a file (in this case images) depending on the URL/string passed to it
+	    Dim ImgSrcStartPosition, ImgSstartPosition, ImgEndPosition, ImageURL, FileDestination, FileName, FileNameDelimiterPos, ImageURLLength, FileBasePath, TestForAbsolute
+	    ImgEndPosition = 0 'Set the variable that records the end (") position of the last image found.
+		
+		Do
+			UpdateScreen() 'update UI
+			
+			ImgSrcStartPosition = Instr(ImgEndPosition + 1, StrEmailHTML, "src=") 'find position of src= attrib in img tag
+			IF ImgSrcStartPosition > 0 Then 'if a position is returned....
+				'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>ImgSrcStartPosition: " & ImgSrcStartPosition
+				ImgStartPosition = ImgSrcStartPosition + 5 'The URL of the email starts 5 places to the right of the 'src' character position
+				'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>ImgStartPosition: " & ImgStartPosition
+				
+				ImgEndPosition = Instr(ImgStartPosition, StrEmailHTML, chr(34)) 'image url goes right till character 34 or "
+				'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>ImgEndPosition " & ImgEndPosition
+				
+				ImageURL = Mid(StrEmailHTML, ImgStartPosition, ImgEndPosition - ImgStartPosition) 'copy the image url from the message code
+				
+				TestForAbsolute = left(ImageURL, 4)
+				
+				IF TestForAbsolute = "http" OR TestForAbsolute = "HTTP" OR TestForAbsolute = "Http" THEN
+					'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>ImageURL: " & ImageURL
+					'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>Downloading Image:<BR><IMG CLASS='OUTPUT' SRC='" & ImageURL & "'><BR>" 'show image to user
+					FileNameDelimiterPos = InStrRev(ImageURL, "/") 'look for image name delimiter position
+					ImageURLLength = Len(ImageURL) 'Length of image url....
+					FileBasePath = Left(ImageURL, FileNameDelimiterPos) 'Find the base path of image
+					StrEmailHTML = Replace(StrEmailHTML, FileBasePath, "Images/") 'replace the base path with a relative url
+					FileName = Right(ImageURL, ImageURLLength - FileNameDelimiterPos) 'get the file name
+					FileName = Replace(FileName,"%20", chr(32)) 'replace any encoded space characters in the file name
+					Set FSOBJ = CreateObject("Scripting.FileSystemObject") 'create fso obj
+					If FSOBJ.FolderExists(SelectedFolder& "\Images\") = False Then 'if the folder don't exist
+						FSOBJ.CreateFolder(SelectedFolder& "\Images\") 'create it!
+					End If
+					FileDestination = SelectedFolder & "\Images\" & FileName 
+					Call DownloadFile(ImageURL, FileDestination)
+				ELSE
+					'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>Alert: Found an image referenced with a relative URL.  This application does not support relative URLs.<BR>"
+				END IF
+			ELSE
+				'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>No more images found!<BR>"
+				Exit Do
+				'Let user no more images can be found and exit the loop
+			End If
+		Loop While (ImgSrcStartPosition <> 0) 'Keep going while the src attribute is found in the code
+	
+	End Sub
+	
+	Sub CampaignSaver()
+
+		'Set up API
+		Dim pre_factory, pre_api
+		Set pre_factory = CreateObject("pocketXMLRPC.Factory")
+	 	set pre_api = pre_factory.Proxy("https://www.vision6.com.au/api/xmlrpcserver.php?version=1.2")
+	   
+		Dim username, password, login_url
+	   
+		'Ask user for user/pass:
+		username = InputBox("Enter your VeMail username")
+		password = InputBox("Enter your VeMail password")
+	   
+		'Hardcode user/pass in script for easy debugging and dev
+		'username = "MorganR"
+		'password = "xxxxxxxx"
+
+		login_url = pre_api.login(username, password) 'login method on remote server
+	   
+		If pre_api.isLoggedIn() = False Then
+			Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<FONT COLOR='RED' SIZE='7'>Login Failed. (Error " & Err.Number & "</FONT>" 'confirm server login
+		Else
+			Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<FONT SIZE='7'>Login successful. Welcome!</FONT>"
+			Set api = pre_factory.Proxy(login_url) 'add session id onto api url
+		End If
+	   
+		Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br><h1>Starting the download process...</h1>"
+	   
+		'Prepare search criteria for searchCampaigns method
+		Dim CampaignSearchArray
+	   
+		CampaignSearchArray = Array()
+		'return all campaigns
+	   
+	 	set ReturnedCampaigns = api.searchCampaigns(CampaignSearchArray)
+		'searchCampaigns method on remote server, limit result to 2, offset of 100
+	    
+		SaveMessagesAndCampaigns
+		'run the sub/function to process the global ReturnedCampaigns Object
+	      
+		' Logout of API session
+		Dim loggedOut
+		loggedOut = api.logout()
+		Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br><BR><h3>Logged Out! Process complete... Thanks :)</h3>"
+		Set objShell = CreateObject( "Shell.Application" )
+		    
+	End Sub
+	
+	
+	Function BrowseFolder( myStartLocation, blnSimpleDialog )
+		' This function generates a Browse Folder dialog
+		' and returns the selected folder as a string.
+		'
+		' Arguments:
+		' myStartLocation   [string]  start folder for dialog, or "My Computer", or
+		'                             empty string to open in "Desktop\My Documents"
+		' blnSimpleDialog   [boolean] if False, an additional text field will be
+		'                             displayed where the folder can be selected
+		'                             by typing the fully qualified path
+		'
+		' Returns:          [string]  the fully qualified path to the selected folder
+		'
+		' http://www.robvanderwoude.com
+	    Const MY_COMPUTER   = &H11&
+	    Const WINDOW_HANDLE = 0 ' Must ALWAYS be 0
+	
+	    Dim numOptions, objFolder, objFolderItem
+	    Dim objPath, objShell, strPath, strPrompt
+	
+	    ' Set the options for the dialog window
+	    strPrompt = "Select a folder:"
+	    If blnSimpleDialog = True Then
+	        numOptions = 0      ' Simple dialog
+	    Else
+	        numOptions = &H10&  ' Additional text field to type folder path
+	    End If
+	    
+	    ' Create a Windows Shell object
+	    Set objShell = CreateObject( "Shell.Application" )
+	
+	    ' If specified, convert "My Computer" to a valid
+	    ' path for the Windows Shell's BrowseFolder method
+	    If UCase( myStartLocation ) = "MY COMPUTER" Then
+	        Set objFolder = objShell.Namespace( MY_COMPUTER )
+	        Set objFolderItem = objFolder.Self
+	        strPath = objFolderItem.Path
+	    Else
+	        strPath = myStartLocation
+	    End If
+	
+	    Set objFolder = objShell.BrowseForFolder( WINDOW_HANDLE, strPrompt, _
+	                                              numOptions, strPath )
+	
+	    ' Quit if no folder was selected
+	    If objFolder Is Nothing Then
+	        BrowseFolder = ""
+	        Exit Function
+	    End If
+	
+	    ' Retrieve the path of the selected folder
+	    Set objFolderItem = objFolder.Self
+	    objPath = objFolderItem.Path
+	
+	    ' Return the path of the selected folder
+	    BrowseFolder = objPath
+	End Function
+	
+	
+	
+	Sub SaveMessagesAndCampaigns()
+	
+		Dim ContactCounter, ColumnCounter
+		Dim CampaignRowCounter
+		Dim XLSCampaignStats
+		Dim CampaignLinkStats
+		Dim ReturnedCampaignStats
+		
+		Set XLSCampaignStats = CreateObject("Excel.Application")
+		XLSCampaignStats.Visible = True
+		XLSCampaignStats.DisplayAlerts = False
+		Set XLSCampaignStatsWorkbook = XLSCampaignStats.Workbooks.Add()
+		Set XLSCampaignStatsWorksheet = XLSCampaignStatsWorkbook.Worksheets(1)
+		
+		XLSCampaignStatsWorksheet.Cells(1, 1).Value = "Campaign ID"
+		XLSCampaignStatsWorksheet.Cells(1, 2).Value = "Message Name"
+		XLSCampaignStatsWorksheet.Cells(1, 3).Value = "Message Subject"
+		XLSCampaignStatsWorksheet.Cells(1, 4).Value = "First sent time"
+		XLSCampaignStatsWorksheet.Cells(1, 5).Value = "Last sent time"
+		XLSCampaignStatsWorksheet.Cells(1, 6).Value = "Total Emails in campaign"
+		XLSCampaignStatsWorksheet.Cells(1, 7).Value = "Unsent Count"
+		XLSCampaignStatsWorksheet.Cells(1, 8).Value = "Failed Count"
+		XLSCampaignStatsWorksheet.Cells(1, 9).Value = "Gross HTML"
+		XLSCampaignStatsWorksheet.Cells(1, 10).Value = "Gross PLain"
+		XLSCampaignStatsWorksheet.Cells(1, 11).Value = "HTML Open Count"
+		XLSCampaignStatsWorksheet.Cells(1, 12).Value = "PLain Text Open Count"
+		XLSCampaignStatsWorksheet.Cells(1, 13).Value = "Bounce Count"
+		XLSCampaignStatsWorksheet.Cells(1, 14).Value = "Update Profile Count"
+		XLSCampaignStatsWorksheet.Cells(1, 15).Value = "Unsubscribe count"
+		XLSCampaignStatsWorksheet.Cells(1, 16).Value = "STF Count"
+		XLSCampaignStatsWorksheet.Cells(1, 17).Value = "Unique Contact Clickthroughs"
+		XLSCampaignStatsWorksheet.Cells(1, 18).Value = "Unique Links Clicked"
+		XLSCampaignStatsWorksheet.Cells(1, 19).Value = "Gross Click throughs"
+		
+		CampaignRowCounter = 1
+		
+		For Each Campaign In ReturnedCampaigns
+	       
+		   	'Current EmailID
+			EmailID = ReturnedCampaigns(Campaign).email_id
+			CampaignID = ReturnedCampaigns(Campaign).id
+		   
+			CampaignRowCounter = CampaignRowCounter + 1
+			
+			Set ReturnedEmail = Nothing
+			Set ReturnedEmail = api.getEmailById(EmailID, RetrieveContent)
+			'Return email (& content) by id
+	       
+	   		MessageName = ReturnedEmail("0")("0").name
+	   		MessageSubject = ReturnedEmail("0")("0").subject
+
+			'Remove any  characters that can't be used in file names:
+			
+			FileMessageSubject = Replace(MessageSubject,"/","_")
+			FileMessageSubject = Replace(FileMessageSubject,"\","_")
+			FileMessageSubject = Replace(FileMessageSubject,"|","_")
+			FileMessageSubject = Replace(FileMessageSubject,"*","_")
+			FileMessageSubject = Replace(FileMessageSubject,":","_")
+			FileMessageSubject = Replace(FileMessageSubject,"?","_")
+			FileMessageSubject = Replace(FileMessageSubject,chr(34),"_")
+			FileMessageSubject = Replace(FileMessageSubject,">","_")
+			FileMessageSubject = Replace(FileMessageSubject,"<","_")
+			
+			FileMessageName = Replace(MessageName,"/","_")
+			FileMessageName = Replace(FileMessageName,"\","_")
+			FileMessageName = Replace(FileMessageName,"|","_")
+			FileMessageName = Replace(FileMessageName,"*","_")
+			FileMessageName = Replace(FileMessageName,":","_")
+			FileMessageName = Replace(FileMessageName,"?","_")
+			FileMessageName = Replace(FileMessageName,chr(34),"_")
+			FileMessageName = Replace(FileMessageName,">","_")
+			FileMessageName = Replace(FileMessageName,"<","_")
+			
+			
+			UpdateScreen()
+	       
+			Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<H3>Downloading Email Number: " & Campaign & "</H3>"
+			'Let user know the first email & campaign id of the returned results
+	   
+			'Prepare to get the contacts from the the first time the message was sent
+			Set CampaignContacts = Nothing
+			CampaignDBObj = Null
+			Contact = Null
+	        
+			'WRITE CAMPAIGN REPORT STATISTIC DATA
+			
+			Set ReturnedCampaignStats = api.getCampaignStatistics(CampaignID)
+
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 1).Value = CampaignID
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 2).Value = MessageName
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 3).Value = MessageSubject
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 4).Value = DateAdd("s", ReturnedCampaignStats.first_sent_time, "01/01/1970 00:00:00")
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 5).Value = DateAdd("s", ReturnedCampaignStats.last_sent_time, "01/01/1970 00:00:00")
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 6).Value = ReturnedCampaignStats.email_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 7).Value = ReturnedCampaignStats.unsent_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 8).Value = ReturnedCampaignStats.failed_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 9).Value = ReturnedCampaignStats.gross_html
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 10).Value = ReturnedCampaignStats.gross_plain
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 11).Value = ReturnedCampaignStats.html_open_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 12).Value = ReturnedCampaignStats.text_open_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 13).Value = ReturnedCampaignStats.bounce_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 14).Value = ReturnedCampaignStats.update_profile_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 15).Value = ReturnedCampaignStats.unsubscribe_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 16).Value = ReturnedCampaignStats.to_friend_count
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 17).Value = ReturnedCampaignStats.unique_contact_click
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 18).Value = ReturnedCampaignStats.unique_link_click
+			XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, 19).Value = ReturnedCampaignStats.gross_click
+			
+			Set CampaignLinkStats = api.getCampaignLinkStatistics(ReturnedCampaigns(Campaign).id)
+		
+			ColumnCounter = 20
+
+			For Each Link in CampaignLinkStats
+
+				XLSCampaignStatsWorksheet.Cells(1, ColumnCounter + 1).Value = "Link URL"
+				XLSCampaignStatsWorksheet.Cells(1, ColumnCounter + 2).Value = "Total Click Count"
+				XLSCampaignStatsWorksheet.Cells(1, ColumnCounter + 3).Value = "Total unique contacts that clicked"
+				XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, ColumnCounter + 1).Value = CampaignLinkStats(Link).link_url
+				XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, ColumnCounter + 2).Value = CampaignLinkStats(Link).click_count
+				XLSCampaignStatsWorksheet.Cells(CampaignRowCounter, ColumnCounter + 3).Value = CampaignLinkStats(Link).contact_count
+				ColumnCounter = ColumnCounter + 4
+
+			Next
+			
+			
+			'WRITE DETAILED CAMPAIGN CONTACT STATISTIC DATA
+			
+			Set CampaignContacts = api.getCampaignContacts(ReturnedCampaigns(Campaign).id) 'get Campaign Contact (by id) on remote server
+	   
+	   
+	   		
+			'Save file
+	       
+			Set XLSCampaignContacts = CreateObject("Excel.Application")
+			XLSCampaignContacts.Visible = True
+			XLSCampaignContacts.DisplayAlerts = False
+			Set CampaignContactsWorkbook = XLSCampaignContacts.Workbooks.Add()
+			Set CampaignContactsWorksheet = CampaignContactsWorkbook.Worksheets(1)
+			
+			CampaignContactsWorksheet.Cells(1, 1).Value = "EMAIL ADDRESSES"
+			CampaignContactsWorksheet.Cells(1, 2).Value = "Open count"
+			CampaignContactsWorksheet.Cells(1, 3).Value = "First Open Time"
+			CampaignContactsWorksheet.Cells(1, 4).Value = "Last Open Time"
+			CampaignContactsWorksheet.Cells(1, 5).Value = "Open country"
+			CampaignContactsWorksheet.Cells(1, 6).Value = "Open Type"
+			CampaignContactsWorksheet.Cells(1, 7).Value = "Number of Links clicked"
+			CampaignContactsWorksheet.Cells(1, 8).Value = "Update Profile Count"
+			CampaignContactsWorksheet.Cells(1, 9).Value = "First Update Profile Time"
+			CampaignContactsWorksheet.Cells(1, 10).Value = "Unsubscribe email"
+			CampaignContactsWorksheet.Cells(1, 11).Value = "Unsubscribe Time"
+			CampaignContactsWorksheet.Cells(1, 12).Value = "First Unsusbscribe Time"
+			CampaignContactsWorksheet.Cells(1, 13).Value = "Bounce smtp error code"
+			CampaignContactsWorksheet.Cells(1, 14).Value = "Bounce description"
+			CampaignContactsWorksheet.Cells(1, 15).Value = "Bounce temporary"
+			CampaignContactsWorksheet.Cells(1, 16).Value = "First bounce Time"
+			CampaignContactsWorksheet.Cells(1, 17).Value = "Send time"
+			CampaignContactsWorksheet.Cells(1, 18).Value = "send status"
+			CampaignContactsWorksheet.Cells(1, 19).Value = "send ID"
+			CampaignContactsWorksheet.Cells(1, 20).Value = "Link Name"
+			CampaignContactsWorksheet.Cells(1, 21).Value = "Link URL"
+			CampaignContactsWorksheet.Cells(1, 22).Value = "Links Clicked"
+			CampaignContactsWorksheet.Cells(1, 23).Value = "Click count"
+			CampaignContactsWorksheet.Cells(1, 24).Value = "Link click timestamp"
+	   
+			UpdateScreen()
+			
+			ContactCounter = 1
+			
+			'Cycle through all contacts, display their email address to the user, save contact details to excel file
+			For Each CampaignDBObj In CampaignContacts
+			
+				For Each Contact In CampaignContacts(CampaignDBObj)
+				
+					'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br>Contact Number: " & Contact
+					ContactCounter = ContactCounter + 1
+					If CampaignContacts(CampaignDBObj)(Contact).contact_email = "" Or CampaignContacts(CampaignDBObj)(Contact).contact_email = Null Then
+						CampaignContactsWorksheet.Cells(ContactCounter, 1).Value = "Contact Deleted"
+						'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br>Deleted contact<BR>"
+					Else
+						CampaignContactsWorksheet.Cells(ContactCounter, 1).Value = CampaignContacts(CampaignDBObj)(Contact).contact_email
+						'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br>Contacts email: " & CampaignContacts(CampaignDBObj)(Contact).contact_email
+					End If
+					
+						CampaignContactsWorksheet.Cells(ContactCounter, 2).Value = CampaignContacts(CampaignDBObj)(Contact).open_count
+						CampaignContactsWorksheet.Cells(ContactCounter, 3).Value = DateAdd("s", CampaignContacts(CampaignDBObj)(Contact).first_open_time, "01/01/1970 00:00:00")
+						CampaignContactsWorksheet.Cells(ContactCounter, 4).Value = DateAdd("s", CampaignContacts(CampaignDBObj)(Contact).last_open_time, "01/01/1970 00:00:00")
+						CampaignContactsWorksheet.Cells(ContactCounter, 5).Value = CampaignContacts(CampaignDBObj)(Contact).open_country
+						CampaignContactsWorksheet.Cells(ContactCounter, 6).Value = CampaignContacts(CampaignDBObj)(Contact).open_type
+						CampaignContactsWorksheet.Cells(ContactCounter, 7).Value = CampaignContacts(CampaignDBObj)(Contact).links_clicked
+						CampaignContactsWorksheet.Cells(ContactCounter, 8).Value = CampaignContacts(CampaignDBObj)(Contact).updated_profile_count
+						
+						If CampaignContacts(CampaignDBObj)(Contact).first_updated_profile_time > 0 THEN
+							CampaignContactsWorksheet.Cells(ContactCounter, 9).Value = DateAdd("s", CampaignContacts(CampaignDBObj)(Contact).first_updated_profile_time, "01/01/1970 00:00:00")
+						ELSE
+							CampaignContactsWorksheet.Cells(ContactCounter, 9).Value = 0
+						END IF
+						
+						CampaignContactsWorksheet.Cells(ContactCounter, 10).Value = CampaignContacts(CampaignDBObj)(Contact).unsub_email
+						CampaignContactsWorksheet.Cells(ContactCounter, 11).Value = CampaignContacts(CampaignDBObj)(Contact).unsub_time
+						
+						If CampaignContacts(CampaignDBObj)(Contact).first_unsubscribe_time > 0 THEN
+							CampaignContactsWorksheet.Cells(ContactCounter, 12).Value = DateAdd("s", CampaignContacts(CampaignDBObj)(Contact).first_unsubscribe_time, "01/01/1970 00:00:00")
+						Else
+							CampaignContactsWorksheet.Cells(ContactCounter, 12).Value = 0
+						End IF
+						CampaignContactsWorksheet.Cells(ContactCounter, 13).Value = CampaignContacts(CampaignDBObj)(Contact).bounce_smtp_error_code
+						CampaignContactsWorksheet.Cells(ContactCounter, 14).Value = CampaignContacts(CampaignDBObj)(Contact).bounce_description
+						CampaignContactsWorksheet.Cells(ContactCounter, 15).Value = CampaignContacts(CampaignDBObj)(Contact).bounce_temporary
+						If CampaignContacts(CampaignDBObj)(Contact).first_bounce_time > 0 Then
+							CampaignContactsWorksheet.Cells(ContactCounter, 16).Value = DateAdd("s", CampaignContacts(CampaignDBObj)(Contact).first_bounce_time, "01/01/1970 00:00:00")
+						ELSE
+							CampaignContactsWorksheet.Cells(ContactCounter, 16).Value = 0
+						END IF
+						CampaignContactsWorksheet.Cells(ContactCounter, 17).Value = DateAdd("s", CampaignContacts(CampaignDBObj)(Contact).send_time, "01/01/1970 00:00:00")
+						CampaignContactsWorksheet.Cells(ContactCounter, 18).Value = CampaignContacts(CampaignDBObj)(Contact).send_status
+						CampaignContactsWorksheet.Cells(ContactCounter, 19).Value = CampaignContacts(CampaignDBObj)(Contact).send_id
+						'DEBUG: SEND ID
+
+						'DEBUG:
+						'If CampaignContacts(CampaignDBObj)(Contact).links_clicked > 0 Then 
+						'	Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR><BR><FONT COLOR='red'> Found contact that has clicked links </FONT><BR>"
+						'End If
+						'DEBUG ABOVE
+						
+						Set ContactLinks = api.getCampaignContactLinks(ReturnedCampaigns(Campaign).id, CampaignContacts(CampaignDBObj)(Contact).send_id)
+					
+						
+						'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR> IsNull(ContactLinks)" & ContactLinks
+						'DEBUG: Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR> IsNull(ContactLinks('0'))" & IsNull(ContactLinks)("0")
+						
+						'if IsNull(ContactLinks) = False Then
+						'	Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR> No links in Email therefore not recording click through information for this e-mail. :)<BR>"
+						'Else
+						
+						ColumnCounter = 20
+						For Each Link In ContactLinks(CampaignDBObj)
+							
+							CampaignContactsWorksheet.Cells(ContactCounter, ColumnCounter).Value = ContactLinks(CampaignDBObj)(Link).link_name
+							CampaignContactsWorksheet.Cells(ContactCounter, ColumnCounter + 1).Value = ContactLinks(CampaignDBObj)(Link).link_url
+							CampaignContactsWorksheet.Cells(ContactCounter, ColumnCounter + 2).Value = ContactLinks(CampaignDBObj)(Link).links_clicked
+							CampaignContactsWorksheet.Cells(ContactCounter, ColumnCounter + 3).Value = ContactLinks(CampaignDBObj)(Link).click_count
+							CampaignContactsWorksheet.Cells(ContactCounter, ColumnCounter + 4).Value = DateAdd("s", ContactLinks(CampaignDBObj)(Link).timestamp, "01/01/1970 00:00:00")
+							
+							CampaignContactsWorksheet.Cells(1, Columncounter).Value = "Link Name"
+							CampaignContactsWorksheet.Cells(1, Columncounter + 1).Value = "Link URL"
+							CampaignContactsWorksheet.Cells(1, Columncounter + 2).Value = "Links Clicked"
+							CampaignContactsWorksheet.Cells(1, Columncounter + 3).Value = "Click count"
+							CampaignContactsWorksheet.Cells(1, Columncounter + 4).Value = "Link click timestamp"
+							
+							ColumnCounter = ColumnCounter + 5
+						Next
+						'End If
+						
+						CampaignContactsWorksheet.columns("A:AZ").AutoFit
+						UpdateScreen()
+				
+				Next
+				
+			Next
+			
+			'BELOW: Save the excel file.  The filename differs depending on user selection, the extension differs depending on version of excel installed
+			If SelectedMessageFormat = "Message ID" THEN
+				If XLSCampaignContacts.Version >= 12.0 THEN
+					ExcelFilePath = SelectedFolder & "\" & EmailID & "-" & CampaignID & ".xlsx"
+				Else
+					ExcelFilePath = SelectedFolder & "\" & EmailID & "-" & CampaignID & ".xls"
+				End If
+				XLSCampaignContacts.ActiveWorkbook.SaveAs ExcelFilePath
+			ElseIf SelectedMessageFormat = "Message Name" THEN
+				If XLSCampaignContacts.Version >= 12.0 THEN
+					ExcelFilePath = SelectedFolder & "\" & FileMessageName & "-" & CampaignID & ".xlsx"
+				Else
+					ExcelFilePath = SelectedFolder & "\" & FileMessageName & "-" & CampaignID & ".xls"
+				End If 
+				XLSCampaignContacts.ActiveWorkbook.SaveAs ExcelFilePath
+			ElseIf SelectedMessageFormat = "Message Subject" THEN
+				If XLSCampaignContacts.Version >= 12.0 THEN
+					ExcelFilePath = SelectedFolder & "\" & FileMessageSubject & "-" & CampaignID & ".xlsx"
+				Else
+					ExcelFilePath = SelectedFolder & "\" & FileMessageSubject & "-" & CampaignID & ".xls"
+				End If
+				XLSCampaignContacts.ActiveWorkbook.SaveAs ExcelFilePath
+			End If
+			
+'			'Let user know the file has been created
+			Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>A contact file, '" & ExcelFilePath & "', has been created.<BR>"
+			
+			
+			XLSCampaignContacts.ActiveWorkbook.Close
+ 			XLSCampaignContacts.Quit
+ 			'ABOVE Close workbook
+	      
+			UpdateScreen()
+
+			On Error Resume Next
+
+			' Write email
+			' Place HTML content into one variable
+			ReturnedEmailContent = Null
+			ReturnedEmailContent = ReturnedEmail("0")("0").html_content
+			
+			'Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR>Current message being downloaded: <BR>" & ReturnedEmailContent
+			'Show user the message
+			
+			Call DownloadImages(ReturnedEmailContent) 'Download the Images for the message and replace the image destination code to relative paths as opposed to absolute 
+	   
+			'Reset file variables
+			Set filesys = Nothing
+			filetxt = Null
+			getname = Null
+			path = Null
+	   
+			Set filesys = CreateObject("Scripting.FileSystemObject")
+			'create filesystem object
+	       
+		   	' Show error code, if any.
+			If Err.Number > 0 THEN Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR> Before text file creation Error # " & CStr(Err.Number) & " " & Err.Description
+		   
+			If SelectedMessageFormat = "Message ID" THEN
+				Set filetxt = filesys.CreateTextFile(SelectedFolder & "\" & EmailID & ".html", True, True) 'create text (HTML) file,  over write the file and use unicode
+				path = SelectedFolder & "\" & EmailID & ".html"	       
+			ElseIf SelectedMessageFormat = "Message Name" THEN
+				'MessageName = ReturnedEmail("0")("0").name
+				Set filetxt = filesys.CreateTextFile(SelectedFolder & "\" & FileMessageName & ".html", True, True) 'create text (HTML) file,  over write the file and use unicode
+				path = SelectedFolder & "\" & FileMessageName & ".html"	  
+			ElseIf SelectedMessageFormat = "Message Subject" THEN
+				'MessageSubject = ReturnedEmail("0")("0").subject
+				Set filetxt = filesys.CreateTextFile(SelectedFolder & "\" & FileMessageSubject & ".html", True, True) 'create text (HTML) file,  over write the file and use unicode
+				path = SelectedFolder & "\" & FileMessageSubject & ".html"
+			End If
+			
+			' Show error code, if any.
+			If Err.Number > 0 THEN Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<BR> Post text file creation Error # " & CStr(Err.Number) & " " & Err.Description
+
+			getname = filesys.GetFileName(path) 'get file name through file system obj
+			filetxt.WriteLine(ReturnedEmailContent) 'write content
+			filetxt.Close 'close file
+	       
+			UpdateScreen()
+           
+			' Let user know the file has been created
+			If filesys.FileExists(path) Then
+				Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br>An file with email code, '" & path & "', has been created."
+			Else
+				Document.getElementById("INTRO").innerHTML = document.getElementById("INTRO").innerHTML & "<br> The file did not save for whatever reason.  The Path should been: " & path
+			End If
+		Next
+		
+		XLSCampaignStatsWorksheet.columns("A:AZ").AutoFit
+		
+		If XLSCampaignStats.Version >= 12.0 THEN
+			ExcelFilePath = SelectedFolder & "\" & "Campaigns Overview" & ".xlsx"
+		Else
+			ExcelFilePath = SelectedFolder & "\" & "Campaigns Overview" & ".xls"
+		End If
+					
+		XLSCampaignStats.ActiveWorkbook.SaveAs ExcelFilePath
+		XLSCampaignStats.ActiveWorkbook.Close
+		XLSCampaignStats.Quit
+		
+	End Sub
+	
+</SCRIPT>
+
+<TITLE>Campaign Reports</TITLE>
+
+<HTA:APPLICATION ID="Campaign Reports" 
+    APPLICATIONNAME="Campaign Reports" 
+    navigable="no"
+    scroll="no"
+    ICON="Resources/CampaignSaver.ico"
+    SINGLEINSTANCE="yes">
+
+<!-- What follows is all presentation inforomation for the program. -->
+    
+<STYLE>
+	body
+	{
+		font-family: arial;
+		margin:0 0 0 0;
+		padding:2 2 2 2;
+	}
+	
+	input
+	{
+		margin: 10px 10px 0px 0px;
+	}
+	
+	img.OUTPUT
+	{
+		width: expression(this.width > 880 ? 880: true);
+	}
+
+
+	A.UI
+	{
+		text-decoration:none;
+	}
+	
+	A.UI_GOBUTTON
+	{
+		text-decoration:none;
+		color:#000000;
+	}
+	
+	a.UI_GOBUTTON:link {color:#0000ee;}      /* GO BUTTON unvisited link */
+	a.UI_GOBUTTON:visited {color:#000000;}  /* GO BUTTON visited link */
+	a.UI_GOBUTTON:hover {color:#00CC00;}  /* GO BUTTON mouse over link */
+	a.UI_GOBUTTON:active {color:#00FF00;}  /* GO BUTTON selected link */
+	
+	a.UI:link {color:#000000;}      /* unvisited link */
+	a.UI:visited {color:#000000;}  /* visited link */
+	a.UI:hover {color:#00CC00;}  /* mouse over link */
+	a.UI:active {color:#00FF00;}  /* selected link */
+
+</STYLE>
+
+</HEAD>
+
+
+<body bgcolor="white" ID="BODY">
+
+<TABLE  width="100%" height="100%" border="0">
+	<TR>
+		<TD vAlign="top" width="100%" height="100%">
+		<SPAN ID="INTERFACE" CLASS="UI">
+				<TABLE CELLPADDING="0" HEIGHT="100%" align="right" CELLSPACING="0" WIDTH="100%" border="0">
+					<TR>
+						<TD></TD>
+					</TR>
+						<TR>	
+						<TD HEIGHT="210" WIDTH="100%" align="left" colspan="2">
+							<IMG SRC="Resources\LOGO1.JPG">
+						</TD>
+					  </TR>
+					  <TR><TD width="100%" align="center" vAlign="Middle"> 
+					  		<IMG SRC="Resources\LOGOTITLE.JPG" WIDTH="70%" ALIGN="CENTER">
+					  </TR></TD>
+					  <TR>
+					  <TD width="100%" colspan="2">
+					          <TABLE WIDTH="100%" height="100%" border="0">
+					          <TR>
+						          <TD width="10%">&nbsp;</TD>
+						          <TD width="35%" align="CENTER" vAlign="center">
+						              <TABLE height="150" border="0"><TR><TD vAlign="TOP">
+						                  <FORM NAME="UserSelections">
+								          Save Files by:<BR>
+								          <INPUT type="radio" onclick="call RadioItem(me.value)" name="FileName" CHECKED="YES" Value="Message ID" ID="RadioMessageID" CLASS="UI"><A CLASS="UI" HREF="#" ID="Link_Message_ID" onclick="Call LinkToRadio(me.ID)">Message ID</A><BR>
+								          <INPUT type="radio" onclick="call RadioItem(me.value)" name="FileName" Value="Message Name" CLASS="UI"><A CLASS="UI" HREF="#" ID="Link_Message_Name" onclick="Call LinkToRadio(me.ID)">Message Name</A><BR>
+								          <INPUT type="radio" onclick="call RadioItem(me.value)" name="FileName" Value="Message Subject" CLASS="UI"><A CLASS="UI" HREF="#" ID="Link_Message_Subject" onclick="Call LinkToRadio(me.ID)">Message Subject</A><BR>
+							          </TD></TR></TABLE>
+						          </TD>
+						          <TD width="7%">&nbsp;</TD> 
+						          <TD width="48%" align="left" vAlign="center">
+						              <TABLE height="150" border="0"><TR><TD vAlign="TOP">
+								          Save Files to:<BR>
+							              <INPUT type="text" name="OutputFolder" style="background-color:lightgrey;" size="60" Value="C:\Documents and Settings\All Users\Documents" readonly="1" ID="OutputFolderText"><BR>
+							              <INPUT type="Button" Name="ChangeFolder" onclick="ChangeFolders" value="Change Folder">
+							              </FORM>
+						              </TD></TR></TABLE>
+					              </TD>
+					              <TD width="10%">&nbsp;</TD>
+					          </TR>
+					          </TABLE>
+				        </TD>
+					  </TR>
+					  <TR>
+					    <TD align="right" colspan="2">
+					        <table style="border: outset light grey 5px;" border="0">
+					        <TR>
+					        <TD onmouseover="LinkPointer" onclick="InitiateProcess" onmouseout="DefaultCursor" width="404" align="Center" CLASS="UI" ID="GoButtonCell">
+					  			<A HREF="#" CLASS="UI_GOBUTTON"><FONT style="font-size:60px; font-family:impact;">&nbsp;&nbsp;&nbsp;GO!&nbsp;&nbsp;&nbsp;</font></A><IMG align="absmiddle" SRC="Resources\TrafficLight.JPG">
+					  		</TD>
+					  		</TR>
+					  	</TD>
+				      </TR>
+				</TABLE>
+		</SPAN>
+		</TD>
+	</TR>
+	<TR>
+	<TD>
+			<TABLE CELLPADDING="0" align="right" CELLSPACING="0" width="100%" border="0">
+				<TR>
+					<TD width="141" CLASS="UI" onmouseover="LinkPointer" ID="ProgramInformationLink" onclick="RunProgramInfo" onmouseout="DefaultCursor" style="border-top: solid black 2px;text-align:left;"><A HREF="#" CLASS="UI">Program Information</A></TD>
+					<TD width="82%" CLASS="UI" align="right" style="border-top: solid black 2px;"><A onmouseover="LinkPointer" onmouseout="DefaultCursor" style="text-decoration:none; text-align:right;" HREF="mailto:morganrobertson@gmail.com" CLASS="UI" >Contact Morgan Robertson</A></TD>
+				</TR>
+			</TABLE>
+	</TD>
+	</TR>
+</TABLE>
+
+<!--{{InsertControlsHere}}-Do not remove this line-->
+</body>
+</HTML>

@@ -1,0 +1,11 @@
+Project: Confluence Page Management Project:
+Purpose: Automating routine bulk page management operations
+Tech used: C#, XML-RPC, Confluence, CMS, API
+
+This script was to automate routine bulk page management operations on an Atlassian Confluence instance via its API.
+
+The program was written in C#/VS Express and connects to Confluence instances via its XML-RPC API.  The script was executed bi-annually, when employees had their performance appraisals done.  Per employee, the script archives the existing performance management pages (PDP, Objectives & Bonuses) and creates new ones from templates with appropriate permissions.  The script would also create a copy only for the employee’s lead that has a special set of permissions.  The program had the ability to exclude certain wildcards / names of people where the standard performance management process did not apply and it also gave the executor a final confirmation of the performance management profiles the script would process so as to prevent mistakes.
+
+See screenshot for UI.
+
+Whilst this script is very unlikely to be functionally useful to people viewing this, it serves as an example of bespoke scripts I've provided to help companies.
